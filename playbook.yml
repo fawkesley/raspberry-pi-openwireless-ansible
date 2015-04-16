@@ -1,0 +1,5 @@
+---
+- hosts: pi-openwireless
+  roles:
+    - security-updates
+    - openwireless

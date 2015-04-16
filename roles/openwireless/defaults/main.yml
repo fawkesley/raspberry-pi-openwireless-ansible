@@ -1,0 +1,11 @@
+wireless_interface: "wlan0"
+wired_interface: "eth0"
+network_prefix: "10.174.230"
+hostapd_conf: "/etc/hostapd/hostapd.conf"
+log_directory: "/var/log/openwireless"
+application_directories:
+  - "/opt/openwireless"
+  - "/opt/openwireless/script"
+
+denied_tcp_ports:
+  - 25        # SMTP

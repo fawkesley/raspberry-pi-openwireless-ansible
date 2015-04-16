@@ -1,0 +1,85 @@
+# Interface for separate control program. If this is specified, hostapd
+# will create this directory and a UNIX domain socket for listening to requests
+# from external programs (CLI/GUI, etc.) for status information and
+# configuration. The socket file will be named based on the interface name, so
+# multiple hostapd processes/interfaces can be run at the same time if more
+# than one interface is used.
+# /var/run/hostapd is the recommended directory for sockets and by default,
+# hostapd_cli will use it when trying to connect with hostapd.
+ctrl_interface=/var/run/hostapd
+
+# Access point interface name, eg wlan0
+interface={{ wireless_interface }}
+
+ssid=openwireless.org
+
+# TODO: UNSUPPORTED ???
+# UTF-8 SSID: Whether the SSID is to be interpreted using UTF-8 encoding
+# utf8_ssid=1
+
+# Country code (ISO/IEC 3166-1). Used to set regulatory domain.
+# Set as needed to indicate country in which device is operating.
+# This can limit available channels and transmit power.
+country_code=GB
+
+# Operation mode (a = IEEE 802.11a, b = IEEE 802.11b, g = IEEE 802.11g,
+# ad = IEEE 802.11ad (60 GHz); a/g options are used with IEEE 802.11n, too, to
+# specify band)
+# Default: IEEE 802.11b
+hw_mode=g
+
+# Channel number (IEEE 802.11)
+# (default: 0, i.e., not set)
+# Please note that some drivers do not use this value from hostapd and the
+# channel will need to be configured separately with iwconfig.
+#
+# If CONFIG_ACS build option is enabled, the channel can be selected
+# automatically at run time by setting channel=acs_survey or channel=0, both of
+# which will enable the ACS survey based algorithm.
+channel=1
+
+# Station MAC address -based authentication
+# Please note that this kind of access control requires a driver that uses
+# hostapd to take care of management frame processing and as such, this can be
+# used with driver=hostap or driver=nl80211, but not with driver=atheros.
+# 0 = accept unless in deny list
+# 1 = deny unless in accept list
+# 2 = use external RADIUS server (accept/deny lists are searched first)
+macaddr_acl=0
+
+# Accept/deny lists are read from separate files (containing list of
+# MAC addresses, one per line). Use absolute path name to make sure that the
+# files can be read on SIGHUP configuration reloads.
+#accept_mac_file=/etc/hostapd.accept
+#deny_mac_file=/etc/hostapd.deny
+
+# Station inactivity limit
+#
+# If a station does not send anything in ap_max_inactivity seconds, an
+# empty data frame is sent to it in order to verify whether it is
+# still in range. If this frame is not ACKed, the station will be
+# disassociated and then deauthenticated. This feature is used to
+# clear station table of old entries when the STAs move out of the
+# range.
+#
+# The station can associate again with the AP if it is still in range;
+# this inactivity poll is just used as a nicer way of verifying
+# inactivity; i.e., client will not report broken connection because
+# disassociation frame is not sent immediately without first polling
+# the STA with a data frame.
+# default: 300 (i.e., 5 minutes)
+ap_max_inactivity=120
+
+
+
+# TODO: UNSUPPORTED ???
+# The inactivity polling can be disabled to disconnect stations based on
+# inactivity timeout so that idle stations are more likely to be disconnected
+# even if they are still in range of the AP. This can be done by setting
+# skip_inactivity_poll to 1 (default 0).
+# skip_inactivity_poll=0
+
+# Disassociate stations based on excessive transmission failures or other
+# indications of connection loss. This depends on the driver capabilities and
+# may not be available with all drivers.
+disassoc_low_ack=1

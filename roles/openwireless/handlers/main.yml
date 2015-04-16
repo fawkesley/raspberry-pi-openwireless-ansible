@@ -1,0 +1,23 @@
+- name: reload sysctl
+  command: sudo sysctl -p
+
+- name: restart hostapd
+  service: name=hostapd
+           state=restarted
+
+- name: restart dnsmasq
+  service: name=dnsmasq
+           state=restarted
+
+- name: restart rsyslogd
+  service: name=rsyslog
+           state=restarted
+
+- name: restart wireless interface
+  command: "{{ item }} {{ wireless_interface }}"
+  with_items:
+    - ifdown
+    - ifup
+
+- name: run firewall script
+  command: "/opt/openwireless/script/configure-firewall.sh"

@@ -1,0 +1,22 @@
+# *Listen* for DNS/DHCP on lo and wireless interface.
+interface=lo,{{ wireless_interface }}
+
+# But don't respond to DHCP on local. Only wireless interface.
+no-dhcp-interface=lo
+
+# Configure the DHCP allocation pool.
+dhcp-range={{ network_prefix }}.2,{{ network_prefix }}.254,255.255.255.0,30m
+
+# Run an executable when a DHCP lease is created or destroyed.
+# The arguments sent to the script are "add" or "del",
+# then the MAC address, the IP address and finally the hostname
+# if there is one.
+dhcp-script=/opt/openwireless/script/dhcp-callback.sh
+
+# For debugging purposes, log each DNS query as it passes through
+# dnsmasq.
+log-queries
+
+# Log lots of extra information about DHCP transactions.
+log-dhcp
+

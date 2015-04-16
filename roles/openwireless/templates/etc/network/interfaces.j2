@@ -1,0 +1,14 @@
+auto lo
+iface lo inet loopback
+
+# Automatically configure wired interface {{ wired_interface }} from DHCP
+
+iface {{ wired_interface }} inet dhcp
+
+# Configure wireless interface {{ wireless_interface }} as WiFi access point
+
+auto {{ wireless_interface }}
+iface {{ wireless_interface }} inet static
+hostapd {{ hostapd_conf }}
+address {{ network_prefix }}.1
+netmask 255.255.255.0

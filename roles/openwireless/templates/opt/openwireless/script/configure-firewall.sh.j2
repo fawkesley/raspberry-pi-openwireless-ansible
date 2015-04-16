@@ -1,0 +1,161 @@
+#!/bin/sh -eux
+
+# Definitions:
+# - ACCESS POINT - the Raspberry Pi
+# - GUESTS - machines on wireless interface
+# - SECURE - machines on LAN side of the Raspberry Pi
+
+
+# http://unix.stackexchange.com/a/46109
+SCRIPT_DIR=$(dirname $0)
+
+IPTABLES=/sbin/iptables
+LAN_WIRED_IP=$(ip route get 8.8.8.8 |cut -d' ' -f8)
+
+# You'll need to turn on IP forwarding (edit /etc/sysctl.conf to do so). And
+# turn on reverse path filter in the same file.
+
+flush_iptables_set_default_drop_policy() {
+    # Flush rules and set chain policy setting to drop. This is the default
+    # if no chain rule matches.
+
+    ${IPTABLES} --flush                     # clear rules
+    ${IPTABLES} --flush --table nat         # same, but for nat table
+    ${IPTABLES} --delete-chain              # delete user-defined chains
+    ${IPTABLES} --delete-chain --table nat
+    ${IPTABLES} --policy INPUT DROP         # default for traffic to Pi
+    ${IPTABLES} --policy FORWARD DROP       # default for forwarded traffic
+}
+
+setup_nat_table() {
+    # Your NAT rule will look a little different. It'd be preferable not to have
+    # this, and instead perform this on 192.168.7.1, but I'm going to guess that's
+    # not possible. If it is possible, skip this nat rule, add it on 7.1 instead, and
+    # add a route to 192.168.1.0/24 via lan-ip.
+
+    ${IPTABLES} --table nat --append POSTROUTING -s {{ network_prefix }}.0/24 -o {{ wired_interface }} --jump SNAT --to-source ${LAN_WIRED_IP}
+
+}
+
+create_log_chains() {
+    ${IPTABLES} -N LOG_ACCEPT
+    ${IPTABLES} -A LOG_ACCEPT -m limit --limit 2/min -j LOG --log-prefix "iptables ACCEPT:" --log-level 4
+    ${IPTABLES} -A LOG_ACCEPT -j ACCEPT
+
+    ${IPTABLES} -N LOG_DROP
+    ${IPTABLES} -A LOG_DROP -m limit --limit 2/min -j LOG --log-prefix "iptables DROP:" --log-level 4
+    ${IPTABLES} -A LOG_DROP -j REJECT
+
+    ${IPTABLES} -N LOG_REJECT
+    ${IPTABLES} -A LOG_REJECT -m limit --limit 2/min -j LOG --log-prefix "iptables REJECT:" --log-level 4
+    ${IPTABLES} -A LOG_REJECT -j REJECT
+}
+
+create_guest_accounting_chains() {
+    ${IPTABLES} -N ACCOUNT_AND_ACCEPT
+    ${IPTABLES} -N GUEST_UPLOAD
+    ${IPTABLES} -N GUEST_DOWNLOAD
+
+    ${IPTABLES} --append ACCOUNT_AND_ACCEPT -i {{ wireless_interface }} -j GUEST_UPLOAD
+    ${IPTABLES} --append ACCOUNT_AND_ACCEPT -i {{ wired_interface }} -j GUEST_DOWNLOAD
+
+    {% for octet in range(145, 150) %}
+
+    ${IPTABLES} -A GUEST_UPLOAD --src {{ network_prefix }}.{{ octet }}
+    ${IPTABLES} -A GUEST_DOWNLOAD --dst {{ network_prefix }}.{{ octet }}
+
+    {% endfor %}
+
+    ${IPTABLES} --append GUEST_UPLOAD -j ACCEPT
+    ${IPTABLES} --append GUEST_DOWNLOAD -j ACCEPT
+}
+
+
+flush_iptables_set_default_drop_policy
+setup_nat_table
+create_log_chains
+create_guest_accounting_chains
+
+
+allow_loopback() {
+  # Let the box talk to itself. Important.
+  ${IPTABLES} --append INPUT -i lo --jump ACCEPT
+}
+allow_loopback
+
+
+allow_established_and_related_packets() {
+    # The next few rules fix that. The first two set up connection tracking,
+    # allowing packets that are part of an existing connection (or very closely
+    # related to it)
+
+    ${IPTABLES} --append INPUT -m state --state ESTABLISHED,RELATED --jump ACCEPT
+    ${IPTABLES} --append FORWARD -m state --state ESTABLISHED,RELATED --jump ACCOUNT_AND_ACCEPT
+
+}
+allow_established_and_related_packets
+
+
+allow_lan_machines_to_access_point() {
+    ${IPTABLES} --append INPUT   -i {{ wired_interface }} --jump ACCEPT
+}
+allow_lan_machines_to_access_point
+
+
+allow_guests_to_access_access_point_dhcp_dns() {
+    # Now, to allow some traffic from the guest network. First, you'll need to allow DHCP.
+    ${IPTABLES} --append INPUT -i {{ wireless_interface }} -p udp --dport bootps --jump ACCEPT # dhcp
+
+    # And DNS on both TCP and UDP
+    ${IPTABLES} --append INPUT -i {{ wireless_interface }} -p udp --dport domain --jump ACCEPT # dns
+    ${IPTABLES} --append INPUT -i {{ wireless_interface }} -p tcp --dport domain --jump ACCEPT # dns
+}
+
+allow_guests_to_access_access_point_dhcp_dns
+
+
+deny_guest_access_to_lan_machines() {
+    # Next, I assume you don't want to allow the guest access to any of your
+    # private networks. So we'll just drop all guest traffic to RFC1918 (private)
+    # space.
+
+    # 11.x.x.x is not actually a private address space, but often used as such.
+
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -d 10.0.0.0/8      --jump LOG_DROP
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -d 172.16.0.0/12   --jump LOG_DROP
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -d 192.168.0.0/16  --jump LOG_DROP
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -d 11.0.0.0/8      --jump LOG_DROP
+}
+
+deny_guest_access_to_lan_machines
+
+deny_guest_access_to_broadcast_packets() {
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -d {{ network_prefix }}.255 --jump LOG_DROP
+}
+deny_guest_access_to_broadcast_packets
+
+
+deny_guest_access_to_specific_internet_tcp_ports() {
+
+    {% for port in denied_tcp_ports %}
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -o {{ wired_interface }} -p tcp --dport {{ port }} --jump LOG_REJECT
+    {% endfor %}
+
+}
+deny_guest_access_to_specific_internet_tcp_ports
+
+
+
+allow_guest_access_to_everything_else() {
+    # Don't let guests talk to anywhere else on the Internet
+    ${IPTABLES} --append FORWARD -i {{ wireless_interface }} -o {{ wired_interface }} --jump ACCOUNT_AND_ACCEPT
+}
+allow_guest_access_to_everything_else
+
+
+
+${IPTABLES} --new WTF_DROP                # new user-defined chain
+${IPTABLES} --append INPUT -j WTF_DROP
+${IPTABLES} --append FORWARD -j WTF_DROP
+${IPTABLES} -A WTF_DROP -m limit --limit 2/min -j LOG --log-prefix "iptables WTF: " --log-level 4
+${IPTABLES} --append WTF_DROP -j DROP  # Now actually drop!

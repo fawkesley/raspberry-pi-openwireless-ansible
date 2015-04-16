@@ -1,0 +1,92 @@
+- name: Install dnsmasq, hostapd and iptables-persistent
+  tags: openwireless
+  apt: pkg={{ item }}
+     state=installed
+  with_items:
+    - dnsmasq
+    - hostapd
+    - iptables-persistent
+
+- name: Configure hostapd.conf
+  tags: openwireless
+  template: src=etc/hostapd/hostapd.conf.j2
+            dest={{ hostapd_conf }}
+  notify: restart hostapd
+
+#  - name: Configure etc/default/hostapd
+#    tags: openwireless
+#    template: src=etc/default/hostapd.j2
+#              dest=/etc/default/hostapd
+#    notify: restart hostapd
+
+- name: Configure /etc/network/interfaces
+  tags: openwireless
+  template: src=etc/network/interfaces.j2
+            dest=/etc/network/interfaces
+  notify: restart wireless interface
+
+- name: Configure DNS and DHCP in /etc/dnsmasq.conf
+  tags: openwireless
+  template: src=etc/dnsmasq.conf.j2
+            dest=/etc/dnsmasq.conf
+  notify: restart dnsmasq
+
+- name: Turn on IPv4 packet forwarding
+  tags: openwireless
+  template: src=etc/sysctl.d/openwireless.conf.j2
+            dest=/etc/sysctl.d/openwireless.conf
+  notify: reload sysctl
+
+- name: Ensure log directory exists
+  tags: openwireless
+  file: path={{ log_directory }}
+        state=directory
+        owner=root
+        group=root
+        mode=755
+
+- name: Re-route log entries with /etc/rsyslog.d
+  tags: openwireless
+  template: src=etc/rsyslog.d/{{ item }}.j2
+            dest=/etc/rsyslog.d/{{ item }}
+  with_items:
+    - dnsmasq.conf
+    - hostapd.conf
+    - iptables.conf
+  notify: restart rsyslogd
+
+
+- name: Add iptables Network Address Translation (NAT) rule
+  tags: openwireless
+  command: iptables -t nat -A POSTROUTING --source {{ network_prefix }}.0/24 ! --destination {{ network_prefix }}.0/24 -j MASQUERADE
+
+
+- name: Ensure application directory exists
+  tags: openwireless
+  file: path={{ item }}
+        state=directory
+        owner=root
+        group=root
+        mode=755
+  with_items: application_directories
+
+- name: Install firewall script
+  tags:
+      - openwireless
+      - iptables
+  template: src=opt/openwireless/script/configure-firewall.sh.j2
+            dest=/opt/openwireless/script/configure-firewall.sh
+            owner=root
+            group=root
+            mode=700
+  notify: run firewall script
+
+
+- name: Make firewall script run on reboot
+  tags:
+      - openwireless
+      - iptables
+  cron: name="configure iptables"
+        job=/opt/openwireless/script/configure-firewall.sh
+        special_time=reboot
+        user=root

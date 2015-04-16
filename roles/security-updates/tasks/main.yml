@@ -1,0 +1,7 @@
+- name: Install unattended-upgrades package
+  apt: pkg=unattended-upgrades state=installed
+
+- name: Enable automatic security updates
+  copy: src=files/etc/apt/apt.conf.d/20auto-upgrades
+        dest=/etc/apt/apt.conf.d/20auto-upgrades
+
